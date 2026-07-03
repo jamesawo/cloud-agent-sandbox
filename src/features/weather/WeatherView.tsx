@@ -130,14 +130,17 @@ function SearchPanel({
             />
           </label>
           {input.compareEnabled && (
-            <input
-              value={input.compareCity}
-              onChange={(event) =>
-                output.onCompareCityChange(event.target.value)
-              }
-              className="h-12 w-full rounded-full border border-slate-200 bg-white/80 px-5 text-base shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500"
-              placeholder="Compare with another city"
-            />
+            <label className="block">
+              <span className="sr-only">Compare city</span>
+              <input
+                value={input.compareCity}
+                onChange={(event) =>
+                  output.onCompareCityChange(event.target.value)
+                }
+                className="h-12 w-full rounded-full border border-slate-200 bg-white/80 px-5 text-base shadow-sm outline-none transition focus:ring-2 focus:ring-blue-500"
+                placeholder="Compare with another city"
+              />
+            </label>
           )}
         </div>
 

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { aqiLabel, formatTimezone, kelvinToFahrenheit } from "./weather-format";
+import {
+  aqiLabel,
+  formatTimezone,
+  kelvinToFahrenheit,
+  localDateKeyFromUnix,
+} from "./weather-format";
 import type { ForecastDay, WeatherReport } from "./weather-types";
 
 const BASE_URL = "https://api.openweathermap.org/data/2.5";
@@ -33,14 +38,24 @@ type AirQualityPayload = { list: Array<{ main: { aqi: number } }> };
 type UvPayload = { value?: number };
 type GeoPayload = { name: string; lat: number; lon: number; country: string };
 
+class WeatherProviderError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function fetchWeatherJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { next: { revalidate: 300 } });
 
   if (!response.ok) {
-    throw new Error(
+    throw new WeatherProviderError(
       response.status === 404
         ? "City not found."
         : "Weather provider is unavailable.",
+      response.status === 404 ? 404 : 502,
     );
   }
 
@@ -49,13 +64,18 @@ async function fetchWeatherJson<T>(url: string): Promise<T> {
 
 export async function getWeatherReport(city: string): Promise<WeatherReport> {
   const apiKey = process.env.OPENWEATHER_API_KEY;
-  if (!apiKey) throw new Error("OPENWEATHER_API_KEY is not configured.");
+  if (!apiKey) {
+    throw new WeatherProviderError(
+      "OPENWEATHER_API_KEY is not configured.",
+      500,
+    );
+  }
 
   const locations = await fetchWeatherJson<GeoPayload[]>(
     `${GEO_URL}?q=${encodeURIComponent(city)}&limit=1&appid=${apiKey}`,
   );
   const location = locations.at(0);
-  if (!location) throw new Error("City not found.");
+  if (!location) throw new WeatherProviderError("City not found.", 404);
 
   const coordinates = `lat=${location.lat}&lon=${location.lon}&appid=${apiKey}`;
   const [current, forecast, air, uv] = await Promise.all([
@@ -97,15 +117,18 @@ export async function getWeatherReport(city: string): Promise<WeatherReport> {
     timezoneOffset: current.timezone,
     timezone: formatTimezone(current.timezone),
     airQuality: aqi ? { aqi, label: aqiLabel(aqi) } : undefined,
-    forecast: createForecast(forecast),
+    forecast: createForecast(forecast, current.timezone),
   };
 }
 
-function createForecast(forecast: ForecastPayload): ForecastDay[] {
+function createForecast(
+  forecast: ForecastPayload,
+  timezoneOffsetSeconds: number,
+): ForecastDay[] {
   const days = new Map<string, ForecastDay>();
 
   for (const item of forecast.list) {
-    const date = new Date(item.dt * 1000).toISOString().slice(0, 10);
+    const date = localDateKeyFromUnix(item.dt, timezoneOffsetSeconds);
     const min = kelvinToFahrenheit(item.main.temp_min);
     const max = kelvinToFahrenheit(item.main.temp_max);
     const rainChance =
@@ -126,7 +149,12 @@ function createForecast(forecast: ForecastPayload): ForecastDay[] {
 
     existing.min = Math.min(existing.min, min);
     existing.max = Math.max(existing.max, max);
-    existing.rainChance = Math.max(existing.rainChance ?? 0, rainChance ?? 0);
+    if (rainChance !== undefined) {
+      existing.rainChance =
+        existing.rainChance === undefined
+          ? rainChance
+          : Math.max(existing.rainChance, rainChance);
+    }
   }
 
   return Array.from(days.values()).slice(0, 5);
@@ -135,8 +163,7 @@ function createForecast(forecast: ForecastPayload): ForecastDay[] {
 export function weatherErrorResponse(error: unknown) {
   const message =
     error instanceof Error ? error.message : "Unable to load weather.";
-  return NextResponse.json(
-    { error: message },
-    { status: message.includes("configured") ? 500 : 400 },
-  );
+  const status = error instanceof WeatherProviderError ? error.status : 400;
+
+  return NextResponse.json({ error: message }, { status });
 }

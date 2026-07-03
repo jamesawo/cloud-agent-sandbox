@@ -39,7 +39,9 @@ function WeatherFeatureContent() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return;
 
-    const cities = JSON.parse(saved) as string[];
+    const cities = readSavedCities(saved);
+    if (!cities) return;
+
     if (cities[0]) {
       setCity(cities[0]);
       setActiveCity(cities[0]);
@@ -126,4 +128,15 @@ function compareReports(
         daylightHours(first.sunrise, first.sunset),
     },
   };
+}
+
+function readSavedCities(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((city): city is string => typeof city === "string")
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

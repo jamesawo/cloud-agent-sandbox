@@ -33,7 +33,6 @@ export function formatLocalTime(
   timezoneOffsetSeconds: number,
   date = new Date(),
 ) {
-  const utc = date.getTime() + date.getTimezoneOffset() * 60_000;
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -41,7 +40,7 @@ export function formatLocalTime(
     month: "short",
     day: "numeric",
     timeZone: "UTC",
-  }).format(new Date(utc + timezoneOffsetSeconds * 1000));
+  }).format(new Date(date.getTime() + timezoneOffsetSeconds * 1000));
 }
 
 export function formatTimeFromUnix(
@@ -55,13 +54,23 @@ export function formatTimeFromUnix(
   );
 }
 
+export function localDateKeyFromUnix(
+  timestamp: number,
+  timezoneOffsetSeconds: number,
+) {
+  return new Date(timestamp * 1000 + timezoneOffsetSeconds * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 export function daylightHours(sunrise: number, sunset: number) {
   return Math.max(0, (sunset - sunrise) / 3600);
 }
 
 export function formatDaylight(hours: number) {
-  const wholeHours = Math.floor(hours);
-  const minutes = Math.round((hours - wholeHours) * 60);
+  const totalMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
   return `${wholeHours}h ${minutes}m`;
 }
 
